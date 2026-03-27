@@ -33,7 +33,7 @@ bend_radius      = 120.0;   // Center-line bend radius (larger = gentler curve)
 
 // Structural
 wall_thickness   = 3.0;     // 3mm walls for rigidity at this diameter
-flange_od        = 170.0;   // Stop flange outer diameter
+flange_od        = 267.0;   // Stop flange outer diameter
 flange_thickness = 4.0;     // Flange axial thickness
 
 // --- Derived Values ---
