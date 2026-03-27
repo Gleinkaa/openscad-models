@@ -17,6 +17,7 @@ If no annotation, defaults are inferred from the value.
 
 import argparse
 import atexit
+import hashlib
 import html as html_mod
 import json
 import os
@@ -25,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -194,13 +196,13 @@ def render_preview(scad_path: str, width: int = 800, height: int = 600) -> bytes
     tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
     tmp.close()
     try:
-        subprocess.run(
-            [exe, "-o", tmp.name,
-             f"--imgsize={width},{height}",
-             "--colorscheme=Tomorrow Night",
-             scad_path],
-            capture_output=True, timeout=60,
-        )
+        cmd = [exe, "-o", tmp.name,
+               f"--imgsize={width},{height}",
+               "--colorscheme=Tomorrow Night"]
+        if PREVIEW_FN:
+            cmd += ["-D", f"$fn={PREVIEW_FN}"]
+        cmd.append(scad_path)
+        subprocess.run(cmd, capture_output=True, timeout=60)
         data = Path(tmp.name).read_bytes()
         return data if len(data) > 100 else None
     except Exception:
@@ -212,18 +214,23 @@ def render_preview(scad_path: str, width: int = 800, height: int = 600) -> bytes
             pass
 
 
-# Cached STL path to avoid re-export when nothing changed
-_stl_cache: dict[str, str] = {}  # keys: "path", "mtime"
+# --- Render settings ---
+PREVIEW_FN: int = 24       # Low $fn for fast preview renders
+FULL_FN: int | None = None  # None = use whatever the .scad file specifies
+
+# Cached STL: keyed by content hash so edits that don't change geometry hit cache
+_stl_cache: dict[str, str | bytes] = {}  # keys: "hash", "path", "data"
 _render_lock = threading.Lock()
 _state_lock = threading.Lock()  # protects cls.lines / cls.params
 
 # Last render error message, surfaced to the browser
 last_render_error: str = ""
+last_render_time: float = 0.0  # seconds
 
 
 def _cleanup_stl_cache():
     p = _stl_cache.get("path")
-    if p:
+    if p and isinstance(p, str):
         try:
             os.unlink(p)
         except OSError:
@@ -233,19 +240,30 @@ def _cleanup_stl_cache():
 atexit.register(_cleanup_stl_cache)
 
 
-def export_stl(scad_path: str) -> bytes | None:
-    """Export scad to binary STL via CLI, return bytes or None."""
-    global last_render_error
+def _content_hash(scad_path: str, preview: bool) -> str:
+    """Hash the .scad file content + render mode for cache key."""
+    content = Path(scad_path).read_bytes()
+    tag = f"preview,fn={PREVIEW_FN}" if preview else "full"
+    return hashlib.md5(content + tag.encode()).hexdigest()
+
+
+def export_stl(scad_path: str, preview: bool = True) -> bytes | None:
+    """Export scad to binary STL via CLI, return bytes or None.
+
+    preview=True uses -D '$fn=N' for fast iteration (~7x faster).
+    preview=False uses the file's own $fn for final quality.
+    """
+    global last_render_error, last_render_time
     exe = _find_openscad()
     if not exe:
         last_render_error = "OpenSCAD not found"
         return None
 
-    mtime = str(os.path.getmtime(scad_path))
-    cached = _stl_cache.get("path")
-    if cached and _stl_cache.get("mtime") == mtime and os.path.isfile(cached):
+    content_hash = _content_hash(scad_path, preview)
+    if _stl_cache.get("hash") == content_hash and _stl_cache.get("data"):
         last_render_error = ""
-        return Path(cached).read_bytes()
+        last_render_time = 0.0
+        return _stl_cache["data"]
 
     if not _render_lock.acquire(blocking=False):
         last_render_error = "Render already in progress"
@@ -253,11 +271,16 @@ def export_stl(scad_path: str) -> bytes | None:
 
     tmp = tempfile.NamedTemporaryFile(suffix=".stl", delete=False)
     tmp.close()
+    t0 = time.monotonic()
     try:
-        result = subprocess.run(
-            [exe, "-o", tmp.name, scad_path],
-            capture_output=True, timeout=120,
-        )
+        cmd = [exe, "-o", tmp.name]
+        if preview and PREVIEW_FN:
+            cmd += ["-D", f"$fn={PREVIEW_FN}"]
+        cmd.append(scad_path)
+
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+        last_render_time = time.monotonic() - t0
+
         if result.returncode != 0:
             err = result.stderr.decode(errors="replace").strip()
             last_render_error = err or f"OpenSCAD exited with code {result.returncode}"
@@ -277,18 +300,20 @@ def export_stl(scad_path: str) -> bytes | None:
                 pass
             return None
 
-        # Validation passed — now update cache
+        # Update cache with content hash + in-memory data
         old = _stl_cache.get("path")
-        if old and old != tmp.name:
+        if old and isinstance(old, str) and old != tmp.name:
             try:
                 os.unlink(old)
             except OSError:
                 pass
         _stl_cache["path"] = tmp.name
-        _stl_cache["mtime"] = mtime
+        _stl_cache["hash"] = content_hash
+        _stl_cache["data"] = data
         last_render_error = ""
         return data
     except subprocess.TimeoutExpired:
+        last_render_time = time.monotonic() - t0
         last_render_error = "OpenSCAD render timed out (>120s)"
         print(f"[OpenSCAD] {last_render_error}", file=sys.stderr)
         try:
@@ -297,6 +322,7 @@ def export_stl(scad_path: str) -> bytes | None:
             pass
         return None
     except Exception as e:
+        last_render_time = time.monotonic() - t0
         last_render_error = str(e)
         try:
             os.unlink(tmp.name)
@@ -593,7 +619,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <label class="auto-render-toggle">
         <input type="checkbox" id="autoRender"> Auto-render
       </label>
-      <button class="btn btn-render" id="renderBtn" onclick="doRender()">Render 3D</button>
+      <button class="btn btn-render" id="renderBtn" onclick="doRender('preview')">Render 3D</button>
+      <button class="btn" onclick="doRender('full')">Full Quality</button>
       <button class="btn" id="downloadBtn" onclick="downloadSTL()" disabled>Download STL</button>
       <button class="btn" onclick="resetAll()">Reset All</button>
       <button class="btn" onclick="openInOpenSCAD()">Open in OpenSCAD</button>
@@ -762,7 +789,8 @@ async function flushChanges() {
     }
 }
 
-async function doRender() {
+async function doRender(quality) {
+    quality = quality || 'preview';
     const spinner = document.getElementById('spinner');
     const placeholder = document.getElementById('previewPlaceholder');
     const btn = document.getElementById('renderBtn');
@@ -770,16 +798,17 @@ async function doRender() {
 
     spinner.classList.add('active');
     btn.disabled = true;
-    info.textContent = 'Exporting STL...';
+    info.textContent = quality === 'full' ? 'Full quality render...' : 'Preview render...';
 
     const t0 = performance.now();
     try {
-        const resp = await fetch(API + '/api/stl?t=' + Date.now());
+        const resp = await fetch(API + '/api/stl?quality=' + quality + '&t=' + Date.now());
         if (!resp.ok) {
             let msg = 'STL export failed';
             try { const j = await resp.json(); msg = j.error || msg; } catch {}
             throw new Error(msg);
         }
+        const serverTime = resp.headers.get('X-Render-Time');
         const buffer = await resp.arrayBuffer();
         if (window._loadSTL) {
             window._loadSTL(buffer);
@@ -788,8 +817,11 @@ async function doRender() {
         }
         placeholder.classList.add('hidden');
         document.getElementById('downloadBtn').disabled = false;
-        const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
-        info.textContent = `${elapsed}s`;
+        const totalMs = ((performance.now() - t0) / 1000).toFixed(1);
+        const renderMs = serverTime ? parseFloat(serverTime).toFixed(1) : totalMs;
+        const cached = serverTime && parseFloat(serverTime) < 0.01;
+        const tag = quality === 'full' ? 'Full' : 'Preview';
+        info.textContent = cached ? `${tag} (cached)` : `${tag} ${renderMs}s`;
     } catch (e) {
         showToast('Render error: ' + e.message);
         info.textContent = '';
@@ -819,8 +851,9 @@ async function openInOpenSCAD() {
 async function downloadSTL() {
     const btn = document.getElementById('downloadBtn');
     btn.disabled = true;
+    showToast('Exporting full-quality STL...');
     try {
-        const resp = await fetch(API + '/api/stl?t=' + Date.now());
+        const resp = await fetch(API + '/api/stl?quality=full&t=' + Date.now());
         if (!resp.ok) throw new Error('STL export failed');
         const blob = await resp.blob();
         const fname = (document.getElementById('fileName').textContent || 'model').replace(/\.scad$/i, '') + '.stl';
@@ -1169,7 +1202,9 @@ class ScadHandler(BaseHTTPRequestHandler):
             if not cls.scad_path:
                 self._send_json({"error": "no file"}, 400)
                 return
-            stl = export_stl(cls.scad_path)
+            qs = parse_qs(urlparse(self.path).query)
+            preview = qs.get("quality", ["preview"])[0] != "full"
+            stl = export_stl(cls.scad_path, preview=preview)
             if stl:
                 stl_name = Path(cls.scad_path).stem + ".stl"
                 self.send_response(200)
@@ -1177,6 +1212,7 @@ class ScadHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", len(stl))
                 self.send_header("Content-Disposition", f'attachment; filename="{stl_name}"')
                 self.send_header("Cache-Control", "no-cache")
+                self.send_header("X-Render-Time", f"{last_render_time:.2f}")
                 self.end_headers()
                 self.wfile.write(stl)
             else:
@@ -1291,7 +1327,12 @@ def main():
     parser.add_argument("-p", "--port", type=int, default=8042, help="Port (default 8042)")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("-d", "--dir", help="Root directory to scan for .scad files")
+    parser.add_argument("--preview-fn", type=int, default=24,
+                        help="$fn override for preview renders (default 24, 0=disable)")
     args = parser.parse_args()
+
+    global PREVIEW_FN
+    PREVIEW_FN = args.preview_fn if args.preview_fn > 0 else None
 
     scan_root = os.path.abspath(args.dir) if args.dir else os.getcwd()
     ScadHandler.scan_root = scan_root
