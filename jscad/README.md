@@ -79,6 +79,7 @@ in the table below.
 | --- | --- | --- |
 | `AC-Flange-154-125mm.js` | The most developed model here: a hollow duct adapter that steps from a 156 mm base to a 124 mm outlet, with a snap-fit chamfered lip and an angled (`-50°`) transition built from a `hull()` between two thin discs. | `d1`, `d2`, `wall`, `angle`, `chamfer`, `len1`, `len2`, `offset_y`, `offset_z`, `snap_height`, `snap_depth`, `segments` |
 | `Door-Vent-Grille.js` | Ventilation cover for a door cut-out: an outer face flange plus an insert that drops into the hole, with a choice of three perforation patterns (`slats`, `grid`, `circles`). Slats wider than 60/120 mm get automatic vertical stiffeners. Throws a descriptive error if the offset or wall thickness exceeds the outer size. | `width`, `length`, `flange_h`, `offset`, `insert_h`, `wall`, `pattern`, `stegbreite`, `lochgroesse` |
+| `Door-Vent-Grille-LowNoise.js` | Low-noise, high-flow successor to `Door-Vent-Grille.js`: same 200 × 60 mm flange and insert envelope, but the aperture is laid out by a solver that maximises open area under print and acoustic constraints (wall ≥ web, cell-size cap, slot aspect ≤ 6), every flow-facing edge is flared (quarter-round bell-mouth on the inlet face, 40° cone on the outlet face), the flange is 4 mm for stiffness, and a design report with free area, velocities and warnings is printed to the console when it renders. Measured 70.1 % open area vs 63.8 % for the original. Supports `pattern: auto/slots/honeycomb/hex-holes`. | `width`, `length`, `flange_h`, `offset`, `insert_h`, `wall`, `pattern`, `web`, `max_cell`, `inlet_flare`, `outlet_chamfer`, `outlet_angle`, `flare_layers`, `gasket_w`, `gasket_d`, `flow_marker`, `flow_m3h`, `target_v`, `show_report` |
 | `Stepped-Cone-Reducer.js` | Two-stage hollow tube reducer — a wide lower section stacked on a narrower upper one. | `d1`, `d2`, `wall`, `h` |
 | `D-Shaft-Knob.js` | Control knob with a D-shaped bore for a flatted potentiometer/encoder shaft. | `knobD`, `shaftD`, `flatOffset` |
 | `Open-Tray.js` | Rectangular box sized from *inner* dimensions plus a wall thickness. | `length`, `width`, `height`, `wall` |
@@ -105,3 +106,12 @@ printing:
 - **`AC-Flange-154-125mm.js`** carries a comment referencing a source screenshot
   (`image_7100ad.png`) that is not part of this repository. Its `segments: 120` default gives
   smooth curves but makes rendering noticeably slower — drop it while iterating.
+- **`Door-Vent-Grille-LowNoise.js`** lays out its aperture with a solver rather than fixed
+  positions, so `pattern: 'auto'` can pick a different cell size when `web` or `max_cell`
+  changes — that is intended, and the console report states what it chose. It prints that
+  report on every render; set `show_report: 'no'` to silence it. `flow_marker` defaults to
+  `'no'` because any marker cut into the flange face leaves the exported mesh non-manifold
+  (OrcaSlicer then reports ~12–20 open edges) while the plain part reports `manifold = yes`.
+  It relies on JSCAD V2 (`extrusions.slice`, `extrudeFromSlices`), and every 2D outline in it
+  must be wound counter-clockwise: a clockwise polygon extrudes inside-out and the following
+  boolean then returns the cutter instead of the part.
