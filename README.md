@@ -16,6 +16,7 @@ Everything here is dimensioned in millimetres and written for FDM printing.
 | `linear_drive_mg996r.scad` | Rack-and-pinion linear stage driven by an MG996R servo, with dovetail rails, sliding carriage and two KW12-3 limit switches as endstops. |
 | `ventilation_adapter_160mm.scad` | 160 mm ventilation duct adapter — 45° elbow. Male end slides into a galvanized pipe, barbed end takes flexible ducting. |
 | `crankrockerwithanimation.scad` | Four-bar crank-rocker mechanism (base, crank with slip clutch, connecting rod, rocker) with full kinematics, animated via `$t`. |
+| `hcsr04-tank-mount/` | HC-SR04 ultrasonic level-sensor mount for a ~100 mm canister filler hole. It has a flange, a push-in centring collar with friction tabs, a snap-in PCB cradle and a drip lid. Its `part` selector exports each piece. The folder includes STLs, renders and a fit-check test ring. |
 | `parametric-editor/scad_editor.py` | The parametric editor — one Python file, standard library only, embedded HTML/JS UI. |
 | `parametric-editor/linear_drive_mg996r.scad` | Sample model shipped with the editor. A variant of the top-level linear drive (taller rails, servo mounted under the base rather than on its side). |
 
@@ -86,6 +87,14 @@ increase `pinion_teeth` or `gear_module` for more.
 the bend and Connector A print upward, and the inner overhang of the bend may want
 supports. `conn_a_od`/`conn_b_od` carry the fit clearances — nudge them if your
 printer over- or under-extrudes.
+
+**HC-SR04 tank mount.** Four parts print without supports in PETG: base (flange
+down), collar (insert end down), lid (roof down) and test ring (lip down). Print
+the 15 mm `test_ring` first to confirm `hole_d`. Every render echoes the
+sensor-face height above the rim (15 mm by default) for the firmware, and
+asserts that the 15° beam cone clears the opening. This model uses
+`rotate_extrude(angle=…)` and was built against an OpenSCAD 2026 snapshot
+(manifold backend). See `hcsr04-tank-mount/README.md`.
 
 **Crank-rocker.** The crank includes a slit and an M3 tensioning screw acting as a
 slip clutch, so a stalled mechanism slips instead of stripping the motor. Uses two
