@@ -74,7 +74,7 @@ openscad -o stl/test_ring.stl -D 'part="test_ring"' -D hole_d=101.5 hcsr04_tank_
 - 0.4 mm nozzle, 0.2 mm layers, **4 walls** (2 mm walls end up as solid
   perimeters), 15–20 % gyroid infill, 4 top and 4 bottom layers.
 - **Supports: off.** All overhangs are ≤45°. The only bridges are the
-  collar-groove roof (2.9 mm), the zip-tie bar (8 mm) and the deck strip between
+  collar-groove roof (2.7 mm), the zip-tie bar (8 mm) and the deck strip between
   the transducers (≈20 mm).
 - On smooth PEI, put glue stick under PETG as a release agent. The textured
   plate works without it.
