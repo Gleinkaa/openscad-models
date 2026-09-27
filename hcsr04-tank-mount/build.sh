@@ -19,7 +19,7 @@ run=("$OS")
 if [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
     run=(xvfb-run -a -s "-screen 0 1600x1200x24" "$OS")
 fi
-img() { "${run[@]}" --render --colorscheme=Tomorrow --imgsize=1400,1100 "$@" "$SCAD" >/dev/null 2>&1 || true; }
+img() { "${run[@]}" --render --colorscheme=Tomorrow --imgsize=1400,1100 "$@" "$SCAD" >/dev/null || { echo "render failed: $*" >&2; fail=1; }; }
 img -o img/assembly.png     -D 'part="assembly"' --camera=0,10,0,60,0,210,330       "$@"
 img -o img/exploded.png     -D 'part="exploded"' --camera=0,10,30,62,0,215,430      "$@"
 img -o img/section.png      -D 'part="section"'  --camera=0,0,5,90,0,180,190 --projection=o "$@"

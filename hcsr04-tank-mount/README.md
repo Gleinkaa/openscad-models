@@ -52,8 +52,8 @@ ABOVE RIM` echo line.
 
 1. Measure the hole with calipers in 2–3 directions and take the average.
 2. Set `hole_d` to that value: `-D hole_d=101.5`, or edit the top of the file,
-   or use OpenSCAD's Customizer. `spigot_d` (hole_d − 2 × `spigot_clr`) and the
-   flange follow automatically.
+   or use OpenSCAD's Customizer. The spigot diameter (`hole_d` − 2 ×
+   `spigot_clr`) and the flange follow automatically.
 3. Print `test_ring` (≈15 min). Drop it into the hole with the lip up.
    - **Good fit:** the four tabs touch the hole wall and centre the ring. It
      goes in by hand and the lip sits flat on the rim.

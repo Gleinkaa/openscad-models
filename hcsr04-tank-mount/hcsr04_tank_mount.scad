@@ -321,7 +321,7 @@ module test_ring() {
             ring(collar_ir, spigot_r, z0, lip_t);
             ring(collar_ir, hole_r + lip_over, 0, lip_t);
         }
-        if (n_tabs > 0) tabs_cut(z0, spigot_drop - 1);
+        if (n_tabs > 0) tabs_cut(z0, min(spigot_drop - 1, test_h - lip_t - 1));
         // notch in the lip: quick visual reference for "which way round"
         translate([hole_r + lip_over - 2, -1, -1]) cube([3, 2, lip_t + 2]);
     }
