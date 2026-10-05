@@ -28,7 +28,18 @@
  * 3. CELL SIZE — small cells instead of huge slots, and a length cap. At equal open area a
  *    large number of small holes gives a lower overall level in the low/mid band than a
  *    small number of large holes (Laffay, cited in the same DAGA paper).
- * 4. STIFFNESS — thicker flange (4 mm), so the plate itself radiates less.
+ * 4. STIFFNESS — a thick flange radiates less, but the door cut-out sets the budget: with
+ *    12 mm overall the visible flange is 2 mm and the stiffness comes from the 10 mm
+ *    insert walls. Raise `flange_h` again whenever the cut-out allows it.
+ *
+ * Current part (the defaults below)
+ * ---------------------------------
+ * Door cut-out 69 x 257 mm, flange 81 x 269 mm (6 mm overlap all round), 12 mm overall =
+ * 2 mm flange + 10 mm insert. The earlier 200 x 60 mm envelope is still reachable with
+ * `--width 200 --length 60 --offset 12 --flange_h 4 --insert_h 15`.
+ * The `Delta freie Flaeche` line in the report always compares against the original
+ * 200 x 60 slot design, so on a different cut-out read it as a reference number and not
+ * as a like-for-like gain.
  *
  * Print orientation is fixed and support-free: lay the part on its outside flange face.
  * All apertures are then vertical through-holes (no bridging anywhere), the inlet
@@ -52,6 +63,8 @@ const SQRT3 = Math.sqrt(3);
 /** Measured free area of the original slot design (see header). Report only. */
 const BASELINE_FREE_AREA_MM2 = 3382.5;
 const BASELINE_CAVITY_MM2 = 171 * 31;
+/** Flange envelope of that original design — used to flag a non-comparable report. */
+const BASELINE_FLANGE_MM2 = 200 * 60;
 /** Smallest wall that still prints as two clean lines with a 0.4 mm nozzle. */
 const MIN_WALL = 0.8;
 /** Above this slot aspect ratio (length:height) slot mouths start to whistle. */
@@ -59,14 +72,14 @@ const MAX_SLOT_ASPECT = 6;
 const MAX_SLOT_LENGTH = 42;
 
 const getParameterDefinitions = () => [
-  { name: 'grp1', type: 'group', caption: 'Aussenmasse (wie Original)' },
-  { name: 'width', type: 'number', initial: 200, caption: 'Max. Breite (X)' },
-  { name: 'length', type: 'number', initial: 60, caption: 'Max. Hoehe (Y)' },
-  { name: 'flange_h', type: 'number', initial: 4, caption: 'Flanschdicke (Z): dicker = steifer = leiser' },
+  { name: 'grp1', type: 'group', caption: 'Flansch (Sichtseite, liegt auf der Tuer auf)' },
+  { name: 'width', type: 'number', initial: 81, caption: 'Flanschbreite (X) = Ausschnitt 69 + 2 x 6 Ueberstand' },
+  { name: 'length', type: 'number', initial: 269, caption: 'Flanschhoehe (Y) = Ausschnitt 257 + 2 x 6 Ueberstand' },
+  { name: 'flange_h', type: 'number', initial: 2, caption: 'Flanschdicke (Z); duenn, die Steifigkeit kommt aus dem Einsteckteil' },
 
   { name: 'grp2', type: 'group', caption: 'Einsteckteil (in der Tuer)' },
-  { name: 'offset', type: 'number', initial: 12, caption: 'Offset nach innen (Ueberstand Rand)' },
-  { name: 'insert_h', type: 'number', initial: 15, caption: 'Einstecktiefe in die Tuer' },
+  { name: 'offset', type: 'number', initial: 6, caption: 'Ueberstand des Flansches je Seite' },
+  { name: 'insert_h', type: 'number', initial: 10, caption: 'Einstecktiefe (Gesamthoehe 12 = Flansch 2 + 10)' },
   { name: 'wall', type: 'number', initial: 2.5, caption: 'Wandstaerke des Einsteckteils' },
 
   { name: 'grp3', type: 'group', caption: 'Lochmuster' },
@@ -379,6 +392,9 @@ const designReport = (p, L) => {
   out.push(`Freier Querschnitt : ${f2(free)} mm2 = ${f2(100 * free / cav)} % des Hohlraums (Original ${f2(100 * BASELINE_FREE_AREA_MM2 / BASELINE_CAVITY_MM2)} %), ${f2(100 * free / (w * l))} % der Flanschflaeche`);
   out.push(`                     an der Einlasskante aufgeweitet auf ${f2(freeIn)} mm2 (${f2(100 * freeIn / cav)} %)`);
   out.push(`Delta freie Flaeche: ${free >= BASELINE_FREE_AREA_MM2 ? '+' : ''}${f2(100 * (free - BASELINE_FREE_AREA_MM2) / BASELINE_FREE_AREA_MM2)} %`);
+  if (Math.abs(w * l - BASELINE_FLANGE_MM2) > 1) {
+    out.push(`                     ! Referenz ist der 200 x 60 mm Originalflansch — bei ${f2(w)} x ${f2(l)} mm ist das keine gleichwertige Gegenueberstellung.`);
+  }
   out.push(`Stegbreite         : ${f2(Math.max(MIN_WALL, p.web))} mm = ${f2(Math.max(MIN_WALL, p.web) / 0.42)} Linien`);
   out.push(`Kanten             : Einlass Viertelrunde r = ${f2(e.inR)} mm, Auslass ${f2(e.outR)} mm @ ${f2(Math.min(45, p.outlet_angle))} Grad, ${stations.length} Loft-Stufen`);
   if (e.cut > 1e-3) out.push(`   ! inlet_flare auf ${f2(e.inR)} mm begrenzt (Stegbreite laesst nicht mehr zu, sonst Restwand < ${MIN_WALL} mm)`);
