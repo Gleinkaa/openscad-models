@@ -170,3 +170,9 @@ The editor looks for OpenSCAD in the standard Windows install locations first, t
 falls back to whatever `openscad` is on `PATH` (which is what happens on Linux and
 macOS). If it isn't found, sliders and file saving still work but renders fail with
 "OpenSCAD not found".
+
+---
+
+## License
+
+MIT — see LICENSE
